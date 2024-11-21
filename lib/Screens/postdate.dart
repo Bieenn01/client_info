@@ -19,15 +19,15 @@ class _PostDateState extends State<PostDate> {
   @override
   void initState() {
     super.initState();
-    _loadClients();
+    // _loadClients();
   }
 
-  Future<void> _loadClients() async {
-    final clients = await mysql.getClients();
-    setState(() {
-      clientSuggestions = clients;
-    });
-  }
+  // Future<void> _loadClients() async {
+  //   final clients = await mysql.getClients();
+  //   setState(() {
+  //     clientSuggestions = clients;
+  //   });
+  // }
 
   Future<List<String>> _fetchFilteredNames(
       String query, List<String> suggestions) async {

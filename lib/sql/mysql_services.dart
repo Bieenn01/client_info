@@ -54,89 +54,57 @@ class MysqlService {
     return products;
   }
 
-  // Fetch inventory data for a specific client and product
-  Future<List<Map<String, dynamic>>> getInventoryForProductAndClient(
-      String clientName, String productName) async {
+  Future<Map<String, dynamic>?> getClientDetails(String sClient) async {
     var conn = await mysql.getConnection();
+    var results = await conn.query('''
+    SELECT c.term, c.shortaddress, c.completeaddress, h.name 
+    FROM harlem_client.client c
+    LEFT JOIN harlem_client.handler h ON h.id = c.handler_id
+    LEFT JOIN harlem_client.class cl ON cl.id = c.class_id
+    LEFT JOIN harlem_client.account_type ct ON ct.id = c.account_type_id
+    WHERE c.id = (
+      SELECT id FROM harlem_client.client WHERE name = ?
+    )
+  ''', [sClient]);
 
-    String query = '''SELECT i.id, p.name, DATE(i.receive_datetime), i.type 
-    FROM harlem_inventory.inventory i
-    LEFT JOIN harlem_products.product_main p ON p.id=i.product_id
-    WHERE i.onhand_quantity_pcs > 0 
-    AND i.receive = true 
-    AND i.expiry_date > CURDATE() 
-    AND i.product_id = (SELECT id FROM harlem_products.product_main WHERE name = '$productName')
-    AND i.mainlocation_id = (SELECT id FROM harlem_inventory.mainlocation WHERE name = 'RGA')
-    AND EXISTS (SELECT 1 FROM harlem_client.client c WHERE c.name = '$clientName')
-    ORDER BY i.expiry_date, i.receive_datetime ''';
-
-    try {
-      print("Query String: $query");
-
-      var results = await conn.query(query);
-
-      List<Map<String, dynamic>> inventoryData = [];
-      for (var row in results) {
-        inventoryData.add({
-          'id': row[0],
-          'product_name': row[1],
-          'receive_datetime': row[2],
-          'type': row[3],
-        });
-      }
-
-      await conn.close();
-      return inventoryData;
-    } catch (e) {
-      print('Error fetching inventory: $e');
-      await conn.close();
-      return [];
+    Map<String, dynamic>? clientDetails;
+    if (results.isNotEmpty) {
+      var row = results.first;
+      clientDetails = {
+        'term': row[0],
+        'shortaddress': row[1],
+        'completeaddress': row[2],
+        'handler_name': row[3],
+      };
     }
+
+    await conn.close();
+    return clientDetails;
   }
 
-  // Fetch detailed inventory data based on id and clientName
-  Future<Map<String, dynamic>> getDetailedInventoryData(
-      String inventoryId, String clientName) async {
+  Future<List<Map<String, dynamic>>> getInvoices(String clientName) async {
     var conn = await mysql.getConnection();
+    String query = '''
+    select id, ref, date, balance, order_id, amount, collection_date, due_date
+    from harlem_caccounts.payable
+    where client_id = (select id from harlem_client.client where name = ?)
+    AND clear = false
+    ORDER BY date, ref
+    ''';
 
-    String query =
-        '''SELECT p.name, i.contents_box, i.expiry_date, pr.price_box, 
-                      f.path, i.onhand_quantity_pcs, i.contents_case 
-                      FROM harlem_inventory.inventory i
-                      LEFT JOIN harlem_products.product_main p ON p.id = i.product_id
-                      LEFT JOIN harlem_price.price pr ON pr.inventory_id = i.id
-                      LEFT JOIN harlem_ftp.inventory f ON f.inventory_id = i.id
-                      WHERE i.id = ? 
-                      AND pr.class_id = (
-                        SELECT class_id 
-                        FROM harlem_client.client 
-                        WHERE name = ? 
-                      )''';
-
-    try {
-      var results = await conn.query(query, [inventoryId, clientName]);
-
-      Map<String, dynamic> detailedData = {};
-
-      if (results.isNotEmpty) {
-        var row = results.first;
-        detailedData = {
-          'name': row[0],
-          'contents_box': row[1],
-          'expiry_date': row[2],
-          'price_box': row[3],
-          'path': row[4],
-          'onhand_quantity_pcs': row[5],
-          'contents_case': row[6],
-        };
-      }
-
-      await conn.close();
-      return detailedData;
-    } catch (e) {
-      print('Error fetching detailed inventory data: $e');
-      await conn.close();
-      return {};
-    }
+    // Execute the query and return the result
+    var result = await conn.query(query, [clientName]);
+    return result
+        .map((row) => {
+              'id': row[0],
+              'ref': row[1],
+              'date': row[2],
+              'balance': row[3],
+              'order_id': row[4],
+              'amount': row[5],
+              'collection_date': row[6],
+              'due_date': row[7],
+            })
+        .toList();
   }
 }

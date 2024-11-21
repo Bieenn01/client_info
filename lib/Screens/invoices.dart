@@ -1,209 +1,148 @@
+import 'package:client_info/formatdate.dart';
 import 'package:client_info/sql/mysql_services.dart';
 import 'package:flutter/material.dart';
 
 class Invoices extends StatefulWidget {
+  final String
+      selectedClient; // Pass the selected client to the invoices screen
+
+  Invoices({required this.selectedClient});
+
   @override
   _InvoicesState createState() => _InvoicesState();
-
 }
 
 class _InvoicesState extends State<Invoices> {
   final MysqlService mysql = MysqlService(); // Instance of the Mysql class
 
-  bool isSearching = false;
-  bool isClientSelected = false;
-  String selectedClient = '';
-  TextEditingController clientController = TextEditingController();
-  String _searchQuery = '';
-  List<String> clientSuggestions = [];
+  bool isLoading = true; // To control loading state
+  List<Map<String, dynamic>> invoices = []; // List to hold fetched invoices
+
+  Map<int, bool> expandedInvoiceStates = {};
 
   @override
   void initState() {
     super.initState();
-    _loadClients();
+    if (widget.selectedClient.isNotEmpty) {
+      _loadInvoices();
+    }
   }
 
-  Future<void> _loadClients() async {
-    final clients = await mysql.getClients();
-    setState(() {
-      clientSuggestions = clients;
-    });
+  @override
+  void didUpdateWidget(covariant Invoices oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the selected client changes, reload the invoices
+    if (oldWidget.selectedClient != widget.selectedClient) {
+      _loadInvoices();
+    }
   }
 
-  Future<List<String>> _fetchFilteredNames(
-      String query, List<String> suggestions) async {
-    return suggestions
-        .where((name) => name.toLowerCase().contains(query.toLowerCase()))
-        .toList();
+  // Fetch invoices using the selected client's name
+  Future<void> _loadInvoices() async {
+    if (widget.selectedClient.isNotEmpty) {
+      setState(() {
+        isLoading = true;
+      });
+
+      try {
+        var invoiceData = await mysql.getInvoices(widget.selectedClient);
+
+        setState(() {
+          invoices = invoiceData;
+          isLoading = false;
+        });
+      } catch (e) {
+        setState(() {
+          isLoading = false;
+        });
+        // Show error message if an exception occurs
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text("Error"),
+            content: Text("Failed to load invoices. Please try again."),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: Text("OK"),
+              ),
+            ],
+          ),
+        );
+      }
+    } else {
+      setState(() {
+        isLoading = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.selectedClient.isEmpty) {
+      return Center(child: Text("Please select a client to view invoices."));
+    }
+
+    if (isLoading) {
+      return Center(child: CircularProgressIndicator());
+    }
+
+    if (invoices.isEmpty) {
+      return Center(child: Text("No unpaid invoices found for this client."));
+    }
+
     return ListView(
       padding: EdgeInsets.all(8),
       children: <Widget>[
-
-        // InputDecorator(
-        //   decoration: InputDecoration(
-        //     labelText: 'Client', // Label for the Client section
-        //     border: OutlineInputBorder(
-        //       borderRadius: BorderRadius.circular(8),
-        //     ),
-        //   ),
-        //   child: Column(
-        //     mainAxisAlignment: MainAxisAlignment.start,
-        //     crossAxisAlignment: CrossAxisAlignment.end,
-        //     children: [
-        //       Row(
-        //         children: [
-        //           Expanded(
-        //             child: GestureDetector(
-        //               onTap: () {
-        //                 if (!isClientSelected) {
-        //                   setState(() {
-        //                     // Allow searching again if the client is not selected
-        //                     isSearching = true;
-        //                     _searchQuery = '';
-        //                   });
-        //                 }
-        //               },
-        //               child: AbsorbPointer(
-        //                 absorbing:
-        //                     isClientSelected, // Disable search if client is selected
-        //                 child: Opacity(
-        //                   opacity: isClientSelected
-        //                       ? 0.5
-        //                       : 1.0, // Adjust opacity if client is selected
-        //                   child: isSearching
-        //                       ? Autocomplete<String>(
-        //                           optionsBuilder: (TextEditingValue
-        //                               textEditingValue) async {
-        //                             if (textEditingValue.text.isEmpty) {
-        //                               return const Iterable<String>.empty();
-        //                             }
-
-        //                             final filteredNames =
-        //                                 await _fetchFilteredNames(
-        //                                     textEditingValue.text,
-        //                                     clientSuggestions);
-        //                             final query =
-        //                                 textEditingValue.text.toLowerCase();
-        //                             final suggestions =
-        //                                 filteredNames.where((name) {
-        //                               final nameLower = name.toLowerCase();
-        //                               return nameLower.startsWith(query) ||
-        //                                   nameLower.contains(query);
-        //                             }).toList();
-
-        //                             suggestions.sort((a, b) {
-        //                               final aLower = a.toLowerCase();
-        //                               final bLower = b.toLowerCase();
-        //                               if (aLower.startsWith(query) &&
-        //                                   !bLower.startsWith(query)) {
-        //                                 return -1;
-        //                               } else if (!aLower.startsWith(query) &&
-        //                                   bLower.startsWith(query)) {
-        //                                 return 1;
-        //                               }
-        //                               return aLower.compareTo(bLower);
-        //                             });
-
-        //                             return suggestions;
-        //                           },
-        //                           displayStringForOption: (String option) =>
-        //                               option,
-        //                           fieldViewBuilder: (context, controller,
-        //                               focusNode, onFieldSubmitted) {
-        //                             return TextField(
-        //                               controller: controller,
-        //                               focusNode: focusNode,
-        //                               decoration: InputDecoration(
-        //                                 hintText: 'Search Client...',
-        //                                 border: InputBorder.none,
-        //                                 contentPadding: EdgeInsets.symmetric(
-        //                                     horizontal: 16.0),
-        //                               ),
-        //                             );
-        //                           },
-        //                           onSelected: (String selection) {
-        //                             setState(() {
-        //                               selectedClient = selection;
-        //                               isClientSelected =
-        //                                   true; // Mark client as selected
-        //                               isSearching =
-        //                                   false; // Stop searching once selected
-        //                             });
-        //                           },
-        //                         )
-        //                       : Row(
-        //                           children: [
-        //                             Icon(Icons.search,
-        //                                 color: Colors.black, size: 30),
-        //                             SizedBox(width: 8),
-        //                             Text(
-        //                               selectedClient.isEmpty
-        //                                   ? ''
-        //                                   : selectedClient,
-        //                               style: TextStyle(fontSize: 16),
-        //                             ),
-        //                           ],
-        //                         ),
-        //                 ),
-        //               ),
-        //             ),
-        //           ),
-        //           IconButton(
-        //             onPressed: () {
-        //               setState(() {
-        //                 clientController.clear();
-        //                 selectedClient = '';
-        //                 isClientSelected = false; // Reset client selection
-        //                 isSearching = false; // Reset search state
-        //               });
-        //             },
-        //             icon: Icon(Icons.refresh_sharp, color: Colors.black),
-        //             iconSize: 24,
-        //           ),
-        //         ],
-        //       ),
-        //     ],
-        //   ),
-        // ),
         Divider(),
-        Card(
-          elevation: 5,
-          margin: EdgeInsets.symmetric(vertical: 8),
-          child: ExpansionTile(
-            title: Text('Invoices Section 1'),
-            subtitle: Text('This is a description of Invoices Section 1.'),
-            trailing: Icon(Icons.arrow_drop_down),
-            children: <Widget>[
-              ListTile(
-                title: Text('Details for Invoices Section 1'),
-              ),
-              ListTile(
-                title: Text('More Info for Invoices Section 1'),
-              ),
-            ],
-          ),
-        ),
-        Card(
-          elevation: 5,
-          margin: EdgeInsets.symmetric(vertical: 8),
-          child: ExpansionTile(
-            title: Text('Invoices Section 2'),
-            subtitle: Text('This is a description of Invoices Section 2.'),
-            trailing: Icon(Icons.arrow_drop_down),
-            children: <Widget>[
-              ListTile(
-                title: Text('Details for Invoices Section 2'),
-              ),
-              ListTile(
-                title: Text('More Info for Invoices Section 2'),
-              ),
-            ],
-          ),
-        ),
+        // Invoices list display
+        ...invoices.map((invoice) {
+          int index = invoices.indexOf(invoice); // Get the index of the invoice
+          bool isExpanded =
+              expandedInvoiceStates[index] ?? false; // Get the expanded state
+
+          return Card(
+            elevation: 5,
+            margin: EdgeInsets.symmetric(vertical: 8),
+            child: Column(
+              children: [
+                ListTile(
+                  title: Text('Invoice Ref: ${invoice['ref']}'),
+                  subtitle: Text('Amount: \₱${invoice['amount']}'),
+                  trailing: Text('Due: ${formatDate(invoice['due_date'])}'),
+                  onTap: () {
+                    setState(() {
+                      // Toggle the expansion state when the user taps
+                      expandedInvoiceStates[index] = !isExpanded;
+                    });
+                  },
+                ),
+                // Only show the additional details if the tile is expanded
+                if (isExpanded)
+                  ExpansionTile(
+                    title: Text('Additional Invoice Details'),
+                    children: <Widget>[
+                      ListTile(
+                        title: Text('Date: ${formatDate(invoice['date'])}'),
+                      ),
+                      ListTile(
+                        title: Text('Balance: \₱${invoice['balance']}'),
+                      ),
+                      ListTile(
+                        title: Text('Order ID: ${invoice['order_id']}'),
+                      ),
+                      ListTile(
+                        title: Text(
+                            'Collection Date: ${formatDate(invoice['collection_date'])}'),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          );
+        }).toList(),
       ],
     );
   }
