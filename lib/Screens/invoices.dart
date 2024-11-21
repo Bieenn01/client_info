@@ -96,31 +96,28 @@ class _InvoicesState extends State<Invoices> {
     return ListView(
       padding: EdgeInsets.all(8),
       children: <Widget>[
-        Divider(),
-        // Invoices list display
-        ...invoices.map((invoice) {
-          int index = invoices.indexOf(invoice); // Get the index of the invoice
-          bool isExpanded =
-              expandedInvoiceStates[index] ?? false; // Get the expanded state
+        // Invoices List
+        Card(
+          elevation: 5,
+          margin: EdgeInsets.symmetric(vertical: 8),
+          child: ExpansionTile(
+            title: Text('Invoices for ${widget.selectedClient}'),
+            subtitle: Text(''),
+            trailing: Icon(Icons.arrow_drop_down),
+            children: invoices.map((invoice) {
+              int index = invoices.indexOf(invoice);
 
-          return Card(
-            elevation: 5,
-            margin: EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              children: [
-                ListTile(
-                  title: Text('Invoice Ref: ${invoice['ref']}'),
-                  subtitle: Text('Amount: \₱${invoice['amount']}'),
-                  trailing: Text('Due: ${formatDate(invoice['due_date'])}'),
-                  onTap: () {
-                    setState(() {
-                      // Toggle the expansion state when the user taps
-                      expandedInvoiceStates[index] = !isExpanded;
-                    });
-                  },
-                ),
-                // Only show the additional details if the tile is expanded
-                if (isExpanded)
+              return ExpansionTile(
+                title: Text('Invoice Ref: ${invoice['ref']}'),
+                subtitle: Text('Amount: \₱${invoice['amount']}'),
+                trailing: Text('Due: ${formatDate(invoice['due_date'])}'),
+                onExpansionChanged: (bool expanded) {
+                  setState(() {
+                    expandedInvoiceStates[index] = expanded;
+                  });
+                },
+                children: <Widget>[
+                  // Additional details inside the first ExpansionTile
                   ExpansionTile(
                     title: Text('Additional Invoice Details'),
                     children: <Widget>[
@@ -139,10 +136,11 @@ class _InvoicesState extends State<Invoices> {
                       ),
                     ],
                   ),
-              ],
-            ),
-          );
-        }).toList(),
+                ],
+              );
+            }).toList(),
+          ),
+        ),
       ],
     );
   }

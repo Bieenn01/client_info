@@ -54,7 +54,7 @@ class _MyHomePageState extends State<MyHomePage> {
       case 1:
         return Invoices(selectedClient: selectedClient); // Invoices page
       case 2:
-        return PostDate(); // PostDate page
+        return PostDate(selectedClient: selectedClient,); // PostDate page
       default:
         return GeneralInfo(
             selectedClient: selectedClient); // Default to GeneralInfo

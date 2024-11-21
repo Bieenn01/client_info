@@ -107,4 +107,49 @@ class MysqlService {
             })
         .toList();
   }
+
+    // This method will fetch post date payments for the selected client
+  Future<List<Map<String, dynamic>>> getPostDates(String selectedClient) async {
+    try {
+      // Open the database connection
+      var conn = await mysql.getConnection();
+
+      // Prepare the query to fetch post date payments
+      String query = '''
+        SELECT id, type, dateclear, amount 
+        FROM harlem_caccounts.payments 
+        WHERE client_id = (
+          SELECT id 
+          FROM harlem_client.client 
+          WHERE name = ? 
+        ) 
+        AND valid = true 
+        AND clear = false 
+        ORDER BY dateclear;
+      ''';
+
+      // Execute the query and get the results
+      var results = await conn.query(query, [selectedClient]);
+
+      // Convert results into a List of Maps
+      List<Map<String, dynamic>> postDates = [];
+      for (var row in results) {
+        postDates.add({
+          'id': row[0],
+          'type': row[1],
+          'dateclear': row[2],
+          'amount': row[3],
+        });
+      }
+
+      // Close the connection
+      await conn.close();
+
+      return postDates;
+    } catch (e) {
+      print('Error fetching post dates: $e');
+      return [];
+    }
+  }
 }
+
