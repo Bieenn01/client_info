@@ -1,6 +1,7 @@
 import 'package:client_info/formatdate.dart';
 import 'package:client_info/sql/mysql_services.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 class Invoices extends StatefulWidget {
   final String
@@ -17,8 +18,9 @@ class _InvoicesState extends State<Invoices> {
 
   bool isLoading = true; // To control loading state
   List<Map<String, dynamic>> invoices = []; // List to hold fetched invoices
-
-  Map<int, bool> expandedInvoiceStates = {};
+  Map<int, bool> expandedInvoiceStates =
+      {}; // For expanding the invoice details
+  Set<int> selectedInvoices = {}; // Set to store selected invoice indices
 
   @override
   void initState() {
@@ -79,6 +81,15 @@ class _InvoicesState extends State<Invoices> {
     }
   }
 
+  // Calculate the total amount of selected invoices
+  double getTotalAmount() {
+    double totalAmount = 0.0;
+    for (var index in selectedInvoices) {
+      totalAmount += invoices[index]['amount'];
+    }
+    return totalAmount;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.selectedClient.isEmpty) {
@@ -93,54 +104,94 @@ class _InvoicesState extends State<Invoices> {
       return Center(child: Text("No unpaid invoices found for this client."));
     }
 
-    return ListView(
-      padding: EdgeInsets.all(8),
-      children: <Widget>[
-        // Invoices List
-        Card(
-          elevation: 5,
-          margin: EdgeInsets.symmetric(vertical: 8),
-          child: ExpansionTile(
-            title: Text('Invoices for ${widget.selectedClient}'),
-            subtitle: Text(''),
-            trailing: Icon(Icons.arrow_drop_down),
-            children: invoices.map((invoice) {
-              int index = invoices.indexOf(invoice);
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: EdgeInsets.all(8),
+            children: <Widget>[
+              Divider(),
+              // Invoices list display
+              ...invoices.map((invoice) {
+                int index =
+                    invoices.indexOf(invoice); // Get the index of the invoice
+                bool isExpanded = expandedInvoiceStates[index] ??
+                    false; // Get the expanded state
 
-              return ExpansionTile(
-                title: Text('Invoice Ref: ${invoice['ref']}'),
-                subtitle: Text('Amount: \₱${invoice['amount']}'),
-                trailing: Text('Due: ${formatDate(invoice['due_date'])}'),
-                onExpansionChanged: (bool expanded) {
-                  setState(() {
-                    expandedInvoiceStates[index] = expanded;
-                  });
-                },
-                children: <Widget>[
-                  // Additional details inside the first ExpansionTile
-                  ExpansionTile(
-                    title: Text('Additional Invoice Details'),
-                    children: <Widget>[
+                return Card(
+                  elevation: 5,
+                  margin: EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    children: [
                       ListTile(
-                        title: Text('Date: ${formatDate(invoice['date'])}'),
+                        title: Text('Invoice Ref: ${invoice['ref']}'),
+                        subtitle: Text(
+                          'Amount: \₱${NumberFormat('#,###.00', 'en_PH').format(invoice['amount'] as double)}', // Format with commas and 2 decimal places
+                        ),
+                        trailing:
+                            Text('Due: ${formatDate(invoice['due_date'])}'),
+                        onTap: () {
+                          setState(() {
+                            // Toggle the expansion state when the user taps
+                            expandedInvoiceStates[index] = !isExpanded;
+                          });
+                        },
+                        leading: Checkbox(
+                          value: selectedInvoices.contains(index),
+                          onChanged: (bool? value) {
+                            setState(() {
+                              if (value == true) {
+                                selectedInvoices.add(index);
+                              } else {
+                                selectedInvoices.remove(index);
+                              }
+                            });
+                          },
+                        ),
                       ),
-                      ListTile(
-                        title: Text('Balance: \₱${invoice['balance']}'),
-                      ),
-                      ListTile(
-                        title: Text('Order ID: ${invoice['order_id']}'),
-                      ),
-                      ListTile(
-                        title: Text(
-                            'Collection Date: ${formatDate(invoice['collection_date'])}'),
-                      ),
+                      // Only show the additional details if the tile is expanded
+                      if (isExpanded)
+                        ExpansionTile(
+                          title: Text('Additional Invoice Details'),
+                          children: <Widget>[
+                            ListTile(
+                              title:
+                                  Text('Date: ${formatDate(invoice['date'])}'),
+                            ),
+                            ListTile(
+                              title: Text(
+                                'Balance: \₱${NumberFormat('#,###.00', 'en_PH').format(invoice['balance'] as double)}', // Comma formatted balance with 2 decimal places
+                              ),
+                            ),
+                            ListTile(
+                              title: Text('Order ID: ${invoice['order_id']}'),
+                            ),
+                            ListTile(
+                              title: Text(
+                                  'Collection Date: ${formatDate(invoice['collection_date'])}'),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
-                ],
-              );
-            }).toList(),
+                );
+              }).toList(),
+            ],
           ),
         ),
+        // Display total amount of selected invoices
+        if (selectedInvoices.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              'Total Amount: \₱${NumberFormat('#,###.00', 'en_PH').format(getTotalAmount())}',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.green,
+              ),
+            ),
+          ),
       ],
     );
   }
