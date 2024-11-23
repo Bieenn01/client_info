@@ -108,6 +108,76 @@ class MysqlService {
         .toList();
   }
 
+  Future<Map<String, dynamic>> getOrderDetails(String orderId) async {
+    var connection = await mysql.getConnection(); // Method to get DB connection
+    var results = await connection.query("""
+      SELECT 
+        c.name, o.type, o.delivery, o.finishtime, o.remarks, o.packs, 
+        o.created, o.saved, o.total, ml.name AS source_location, mlc.name AS complete_location 
+      FROM harlem_clientorders.order o 
+      LEFT JOIN harlem_inventory.mainlocation ml ON ml.id = o.source_id 
+      LEFT JOIN harlem_inventory.mainlocation mlc ON mlc.id = o.complete_id 
+      LEFT JOIN harlem_client.client c ON c.id = o.client_id 
+      WHERE o.id = ?
+    """, [orderId]);
+
+    if (results.isNotEmpty) {
+      var row = results.first;
+      return {
+        'client_name': row[0],
+        'type': row[1],
+        'delivery': row[2],
+        'finishtime': row[3],
+        'remarks': row[4],
+        'packs': row[5],
+        'created': row[6],
+        'saved': row[7],
+        'total': row[8],
+        'source_location': row[9],
+        'complete_location': row[10],
+      };
+    } else {
+      throw Exception('Order not found');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getProductDetails(String orderId) async {
+    var connection = await mysql.getConnection();
+    try {
+      var results = await connection.query('''
+        SELECT p.name, o.order_quantity, o.alotted_quantity, o.served_quantity,
+               i.contents_box, o.price_box, o.total 
+        FROM harlem_clientorders.order os 
+        LEFT JOIN harlem_clientorders.orderdetails o ON o.order_id = os.id
+        LEFT JOIN harlem_inventory.inventory i ON i.id = o.inventory_id
+        LEFT JOIN harlem_products.product_main p ON p.id = o.product_id
+        WHERE o.deleted = false AND os.id = ?
+        ORDER BY o.datetime
+      ''', [orderId]);
+
+      List<Map<String, dynamic>> productDetails = [];
+      for (var row in results) {
+        productDetails.add({
+          'name': row[0],
+          'order_quantity': row[1],
+          'alotted_quantity': row[2],
+          'served_quantity': row[3],
+          'contents_box': row[4],
+          'price_box': row[5],
+          'total': row[6],
+        });
+      }
+
+      return productDetails;
+    } catch (e) {
+      print('Error fetching product details: $e');
+      rethrow;
+    } finally {
+      await connection.close();
+    }
+  }
+  
+
     // This method will fetch post date payments for the selected client
   Future<List<Map<String, dynamic>>> getPostDates(String selectedClient) async {
     try {
@@ -149,6 +219,70 @@ class MysqlService {
     } catch (e) {
       print('Error fetching post dates: $e');
       return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getTransactionDetails(
+      String paymentId) async {
+    try {
+      var conn = await mysql.getConnection();
+
+      String query = '''
+        SELECT c.name, t.datetime, py.date, py.ref, py.amount, t.amount, py.order_id
+        FROM harlem_caccounts.transaction t
+        LEFT JOIN harlem_caccounts.payable py ON py.id = t.payable_id
+        LEFT JOIN harlem_client.client c ON c.id = py.client_id
+        WHERE t.payment_id = ?;
+      ''';
+
+      var results = await conn.query(query, [paymentId]);
+
+      List<Map<String, dynamic>> transactions = [];
+      for (var row in results) {
+        transactions.add({
+          'name': row[0],
+          'datetime': row[1],
+          'payable_date': row[2],
+          'ref': row[3],
+          'payable_amount': row[4],
+          'transaction_amount': row[5],
+          'order_id': row[6],
+        });
+      }
+
+      return transactions;
+    } catch (e) {
+      print('Error fetching transaction details: $e');
+      throw Exception('Failed to fetch transaction details');
+    }
+  }
+
+   Future<Map<String, dynamic>> getPaymentDetails(String paymentId) async {
+    try {
+
+      var conn = await mysql.getConnection();
+      String query = '''
+        SELECT p.type, p.dateclear, p.datetime, p.amount
+        FROM harlem_caccounts.payments p
+        WHERE p.id = ?;
+      ''';
+
+      var result = await conn.query(query, [paymentId]);
+
+      if (result.isNotEmpty) {
+        var row = result.first;
+        return {
+          'type': row[0],
+          'dateclear': row[1],
+          'datetime': row[2],
+          'amount': row[3],
+        };
+      } else {
+        return {};
+      }
+    } catch (e) {
+      print('Error fetching payment details: $e');
+      throw Exception('Failed to fetch payment details');
     }
   }
 }

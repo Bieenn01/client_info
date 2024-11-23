@@ -1,7 +1,8 @@
-import 'package:client_info/formatdate.dart';
-import 'package:client_info/sql/mysql_services.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:client_info/sql/mysql_services.dart';
+import 'package:client_info/formatdate.dart';
+
 
 class Invoices extends StatefulWidget {
   final String
@@ -22,6 +23,9 @@ class _InvoicesState extends State<Invoices> {
       {}; // For expanding the invoice details
   Set<int> selectedInvoices = {}; // Set to store selected invoice indices
 
+  Set<int> selectedProducts = {};
+  double totalSelectedProductAmount = 0;
+
   @override
   void initState() {
     super.initState();
@@ -37,6 +41,15 @@ class _InvoicesState extends State<Invoices> {
     if (oldWidget.selectedClient != widget.selectedClient) {
       _loadInvoices();
     }
+  }
+
+    // Calculate the total amount of selected invoices
+  double getTotalAmount() {
+    double totalAmount = 0.0;
+    for (var index in selectedInvoices) {
+      totalAmount += invoices[index]['amount'];
+    }
+    return totalAmount;
   }
 
   // Fetch invoices using the selected client's name
@@ -81,13 +94,26 @@ class _InvoicesState extends State<Invoices> {
     }
   }
 
-  // Calculate the total amount of selected invoices
-  double getTotalAmount() {
-    double totalAmount = 0.0;
-    for (var index in selectedInvoices) {
-      totalAmount += invoices[index]['amount'];
+  // Fetch the details for an Order ID
+  Future<Map<String, dynamic>> _fetchOrderDetails(String orderId) async {
+    try {
+      return await mysql.getOrderDetails(orderId);
+    } catch (e) {
+      print('Error fetching order details: $e');
+      throw Exception('Failed to fetch order details');
     }
-    return totalAmount;
+  }
+
+  // Fetch the product order details for a specific order ID
+  Future<List<Map<String, dynamic>>> _fetchProductDetails(
+      String orderId) async {
+    try {
+      var results = await mysql.getProductDetails(orderId);
+      return results;
+    } catch (e) {
+      print('Error fetching product details: $e');
+      throw Exception('Failed to fetch product details');
+    }
   }
 
   @override
@@ -163,13 +189,414 @@ class _InvoicesState extends State<Invoices> {
                                 'Balance: \₱${NumberFormat('#,###.00', 'en_PH').format(invoice['balance'] as double)}', // Comma formatted balance with 2 decimal places
                               ),
                             ),
-                            ListTile(
+                            // Order ID - ExpansionTile with FutureBuilder
+                            ExpansionTile(
                               title: Text('Order ID: ${invoice['order_id']}'),
+                              children: <Widget>[
+                                FutureBuilder<Map<String, dynamic>>(
+                                  future:
+                                      _fetchOrderDetails(invoice['order_id']),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                        ConnectionState.active) {
+                                      return Padding(
+                                        padding: EdgeInsets.all(16),
+                                        child: CircularProgressIndicator(),
+                                      );
+                                    } else if (snapshot.hasError) {
+                                      return Padding(
+                                        padding: EdgeInsets.all(16),
+                                        child: Text(
+                                            'Failed to load order details.'),
+                                      );
+                                    } else if (!snapshot.hasData ||
+                                        snapshot.data!.isEmpty) {
+                                      return Padding(
+                                        padding: EdgeInsets.all(16),
+                                        child: Text(
+                                            'No details available for this order.'),
+                                      );
+                                    }
+
+                                    var orderDetails = snapshot.data!;
+
+                                    return Column(
+                                      children: [
+                                        ListTile(
+                                          title: Text(
+                                              'Client Name: ${orderDetails['client_name']}'),
+                                        ),
+                                        ListTile(
+                                          title: Text(
+                                              'Order Type: ${orderDetails['type']}'),
+                                        ),
+                                        ListTile(
+                                          title: Text(
+                                              'Delivery: ${orderDetails['delivery']}'),
+                                        ),
+                                        ListTile(
+                                          title: Text(
+                                              'Finish Time: ${formatDate(orderDetails['finishtime'])}'),
+                                        ),
+                                        ListTile(
+                                          title: Text(
+                                              'Remarks: ${orderDetails['remarks']}'),
+                                        ),
+                                        ListTile(
+                                          title: Text(
+                                              'Packs: ${orderDetails['packs']}'),
+                                        ),
+                                        ListTile(
+                                          title: Text(
+                                              'Created: ${formatDate(orderDetails['created'])}'),
+                                        ),
+                                        ListTile(
+                                          title: Text(
+                                              'Saved: ${formatDate(orderDetails['saved'])}'),
+                                        ),
+                                        ListTile(
+                                          title: Text(
+                                              'Total: ₱${NumberFormat('#,###.00', 'en_PH').format(orderDetails['total'] as double)}'),
+                                        ),
+                                        ListTile(
+                                          title: Text(
+                                              'Source Location: ${orderDetails['source_location']}'),
+                                        ),
+                                        ListTile(
+                                          title: Text(
+                                              'Complete Location: ${orderDetails['complete_location']}'),
+                                        ),
+                                        // Second ExpansionTile for Product Details
+                                        FutureBuilder<
+                                            List<Map<String, dynamic>>>(
+                                          future: _fetchProductDetails(
+                                              invoice['order_id']),
+                                          builder: (context, snapshot) {
+                                            if (snapshot.connectionState ==
+                                                ConnectionState.active) {
+                                              return Padding(
+                                                padding: EdgeInsets.all(16),
+                                                child:
+                                                    CircularProgressIndicator(),
+                                              );
+                                            } else if (snapshot.hasError) {
+                                              return Padding(
+                                                padding: EdgeInsets.all(16),
+                                                child: Text(
+                                                    'Failed to load product details.'),
+                                              );
+                                            } else if (!snapshot.hasData ||
+                                                snapshot.data!.isEmpty) {
+                                              return Padding(
+                                                padding: EdgeInsets.all(16),
+                                                child: Text(
+                                                    'No product details available for this order.'),
+                                              );
+                                            }
+
+                                            return ExpansionTile(
+                                              title: Text('Product Details'),
+                                              children: <Widget>[
+                                                FutureBuilder<
+                                                    List<Map<String, dynamic>>>(
+                                                  future: _fetchProductDetails(
+                                                      invoice['order_id']),
+                                                  builder: (context,
+                                                      productSnapshot) {
+                                                    if (productSnapshot
+                                                            .connectionState ==
+                                                        ConnectionState
+                                                            .active) {
+                                                      return Padding(
+                                                        padding:
+                                                            EdgeInsets.all(16),
+                                                        child:
+                                                            CircularProgressIndicator(),
+                                                      );
+                                                    } else if (productSnapshot
+                                                        .hasError) {
+                                                      return Padding(
+                                                        padding:
+                                                            EdgeInsets.all(16),
+                                                        child: Text(
+                                                            'Failed to load product details.'),
+                                                      );
+                                                    } else if (!productSnapshot
+                                                            .hasData ||
+                                                        productSnapshot
+                                                            .data!.isEmpty) {
+                                                      return Padding(
+                                                        padding:
+                                                            EdgeInsets.all(16),
+                                                        child: Text(
+                                                            'No product details available.'),
+                                                      );
+                                                    }
+
+                                                    var productDetails =
+                                                        productSnapshot.data!;
+
+                                                    return Padding(
+                                                      padding:
+                                                          EdgeInsets.all(0),
+                                                      child:
+                                                          SingleChildScrollView(
+                                                        scrollDirection: Axis
+                                                            .horizontal, // Enables horizontal scrolling
+                                                        child: Column(
+                                                          children: [
+                                                            Table(
+                                                              border:
+                                                                  TableBorder
+                                                                      .all(
+                                                                color:
+                                                                    Colors.grey,
+                                                                width: 1,
+                                                              ),
+                                                              columnWidths: {
+                                                                0: FixedColumnWidth(
+                                                                    200),
+                                                                1: FixedColumnWidth(
+                                                                    120),
+                                                                2: FixedColumnWidth(
+                                                                    120),
+                                                                3: FixedColumnWidth(
+                                                                    120),
+                                                                4: FixedColumnWidth(
+                                                                    120),
+                                                                5: FixedColumnWidth(
+                                                                    50), // Added column for checkbox
+                                                              },
+                                                              children: [
+                                                                // Header Row with background color for better readability
+                                                                TableRow(
+                                                                  decoration:
+                                                                      BoxDecoration(
+                                                                    color: Colors
+                                                                            .grey[
+                                                                        200], // Light grey background for header
+                                                                  ),
+                                                                  children: [
+                                                                    TableCell(
+                                                                      child:
+                                                                          Padding(
+                                                                        padding: const EdgeInsets
+                                                                            .all(
+                                                                            8.0),
+                                                                        child:
+                                                                            Text(
+                                                                          'Product',
+                                                                          style:
+                                                                              TextStyle(fontWeight: FontWeight.bold),
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                    TableCell(
+                                                                      child:
+                                                                          Padding(
+                                                                        padding: const EdgeInsets
+                                                                            .all(
+                                                                            8.0),
+                                                                        child:
+                                                                            Text(
+                                                                          'Order Quantity',
+                                                                          style:
+                                                                              TextStyle(fontWeight: FontWeight.bold),
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                    TableCell(
+                                                                      child:
+                                                                          Padding(
+                                                                        padding: const EdgeInsets
+                                                                            .all(
+                                                                            8.0),
+                                                                        child:
+                                                                            Text(
+                                                                          'Allotted Quantity',
+                                                                          style:
+                                                                              TextStyle(fontWeight: FontWeight.bold),
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                    TableCell(
+                                                                      child:
+                                                                          Padding(
+                                                                        padding: const EdgeInsets
+                                                                            .all(
+                                                                            8.0),
+                                                                        child:
+                                                                            Text(
+                                                                          'Served Quantity',
+                                                                          style:
+                                                                              TextStyle(fontWeight: FontWeight.bold),
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                    TableCell(
+                                                                      child:
+                                                                          Padding(
+                                                                        padding: const EdgeInsets
+                                                                            .all(
+                                                                            8.0),
+                                                                        child:
+                                                                            Text(
+                                                                          'Total',
+                                                                          style:
+                                                                              TextStyle(fontWeight: FontWeight.bold),
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                    TableCell(
+                                                                      child:
+                                                                          Padding(
+                                                                        padding: const EdgeInsets
+                                                                            .all(
+                                                                            8.0),
+                                                                        child:
+                                                                            Text(
+                                                                          '',
+                                                                          style:
+                                                                              TextStyle(fontWeight: FontWeight.bold),
+                                                                        ),
+                                                                      ),
+                                                                    ),
+                                                                  ],
+                                                                ),
+                                                                // Product Details Rows (data rows)
+                                                                ...productDetails
+                                                                    .asMap()
+                                                                    .entries
+                                                                    .map(
+                                                                        (entry) {
+                                                                  int index =
+                                                                      entry.key;
+                                                                  var product =
+                                                                      entry
+                                                                          .value;
+
+                                                                  return TableRow(
+                                                                    children: [
+                                                                      TableCell(
+                                                                        child:
+                                                                            Padding(
+                                                                          padding: const EdgeInsets
+                                                                              .all(
+                                                                              8.0),
+                                                                          child:
+                                                                              Text('${product['name']}'),
+                                                                        ),
+                                                                      ),
+                                                                      TableCell(
+                                                                        child:
+                                                                            Padding(
+                                                                          padding: const EdgeInsets
+                                                                              .all(
+                                                                              8.0),
+                                                                          child:
+                                                                              Text('${product['order_quantity']}'),
+                                                                        ),
+                                                                      ),
+                                                                      TableCell(
+                                                                        child:
+                                                                            Padding(
+                                                                          padding: const EdgeInsets
+                                                                              .all(
+                                                                              8.0),
+                                                                          child:
+                                                                              Text('${product['alotted_quantity']}'),
+                                                                        ),
+                                                                      ),
+                                                                      TableCell(
+                                                                        child:
+                                                                            Padding(
+                                                                          padding: const EdgeInsets
+                                                                              .all(
+                                                                              8.0),
+                                                                          child:
+                                                                              Text('${product['served_quantity']}'),
+                                                                        ),
+                                                                      ),
+                                                                      TableCell(
+                                                                        child:
+                                                                            Padding(
+                                                                          padding: const EdgeInsets
+                                                                              .all(
+                                                                              8.0),
+                                                                          child:
+                                                                              Text(
+                                                                            '₱${NumberFormat('#,###.00', 'en_PH').format(product['total'] as double)}',
+                                                                          ),
+                                                                        ),
+                                                                      ),
+                                                                      TableCell(
+                                                                        child:
+                                                                            Padding(
+                                                                          padding: const EdgeInsets
+                                                                              .all(
+                                                                              0),
+                                                                          child:
+                                                                              Checkbox(
+                                                                            value:
+                                                                                selectedProducts.contains(index),
+                                                                            onChanged:
+                                                                                (bool? value) {
+                                                                              setState(() {
+                                                                                if (value == true) {
+                                                                                  selectedProducts.add(index);
+                                                                                  totalSelectedProductAmount += product['total'] as double;
+                                                                                } else {
+                                                                                  selectedProducts.remove(index);
+                                                                                  totalSelectedProductAmount -= product['total'] as double;
+                                                                                }
+                                                                              });
+                                                                            },
+                                                                          ),
+                                                                        ),
+                                                                      ),
+                                                                    ],
+                                                                  );
+                                                                }).toList(),
+                                                              ],
+                                                            ),
+                                                            // Display total selected amount
+                                                            Padding(
+                                                              padding:
+                                                                  const EdgeInsets
+                                                                      .all(8.0),
+                                                              child: Text(
+                                                                'Total Selected Amount: \₱${NumberFormat('#,###.00', 'en_PH').format(totalSelectedProductAmount)}',
+                                                                style:
+                                                                    TextStyle(
+                                                                  fontSize: 16,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .bold,
+                                                                  color: Colors
+                                                                      .green,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    );
+                                                  },
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              ],
                             ),
                             ListTile(
                               title: Text(
                                   'Collection Date: ${formatDate(invoice['collection_date'])}'),
-                            ),
+                            )
                           ],
                         ),
                     ],
